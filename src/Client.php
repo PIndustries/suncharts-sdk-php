@@ -42,14 +42,14 @@ final class Client
         private readonly ClientInterface $http,
         private readonly RequestFactoryInterface $requests,
         private readonly StreamFactoryInterface $streams,
-        private readonly string $userAgent = 'suncharts-sdk-php/0.2',
+        private readonly string $userAgent = 'suncharts-sdk-php/26.10.16.1',
         private readonly ?string $userToken = null,
     ) {
         $this->baseUrl = rtrim($baseUrl, '/');
     }
 
     /** Build with PSR-18/17 discovery (Guzzle, Symfony HttpClient, ...). */
-    public static function create(string $baseUrl, ?Credentials $credentials = null, ?ClientInterface $http = null, string $userAgent = 'suncharts-sdk-php/0.2'): self
+    public static function create(string $baseUrl, ?Credentials $credentials = null, ?ClientInterface $http = null, string $userAgent = 'suncharts-sdk-php/26.10.16.1'): self
     {
         return new self(
             $baseUrl,

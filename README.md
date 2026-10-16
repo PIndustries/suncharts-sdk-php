@@ -6,7 +6,7 @@ credentials, MIT licensed. Every operation and model is **generated from the pub
 (`openapi.json`), so the SDK never drifts from the API.
 
 ```bash
-composer require pindustries/suncharts-sdk-php:^0.2
+composer require pindustries/suncharts-sdk-php:^26.10
 # until it is on Packagist, add the VCS repository first:
 # composer config repositories.suncharts vcs https://github.com/PIndustries/suncharts-sdk-php
 ```
@@ -69,3 +69,9 @@ scripts/generate.sh      # regenerate src/Generated from openapi.json (Java 11+)
 if `src/Generated` is not exactly what the generator produces.
 
 MIT © P.Industries
+
+## Versioning
+
+Releases use the P.Industries format `YY.MM.DD.<build-of-day>` (UTC date), e.g. `26.10.16.1`; the git tag is exactly
+that (no `v`). Composer uses the 4-part version as is; constrain with `^26.10` (any later release). Bump with `scripts/version.sh set $(scripts/version.sh next)`; merging a `VERSION` change to
+`main` tags the release automatically (`.github/workflows/release.yml`).
