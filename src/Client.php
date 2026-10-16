@@ -20,6 +20,10 @@ use Psr\Http\Message\StreamFactoryInterface;
  *   $c = Client::create('https://sandbox-api.suncharts.app', new ApiKey($key));
  *   $tokens = $c->magicStart('doc@clinic.example');
  *   $today = $c->withUserToken($accessToken)->today();
+ *
+ * Every operation in the OpenAPI spec is also available, typed, through the generated API classes:
+ *
+ *   $tenants = $c->api(PartnerApi::class)->partnerListTenants();   // PIndustries\SunCharts\Generated\Api\PartnerApi
  */
 final class Client
 {
@@ -38,14 +42,14 @@ final class Client
         private readonly ClientInterface $http,
         private readonly RequestFactoryInterface $requests,
         private readonly StreamFactoryInterface $streams,
-        private readonly string $userAgent = 'suncharts-sdk-php/0.1',
+        private readonly string $userAgent = 'suncharts-sdk-php/0.2',
         private readonly ?string $userToken = null,
     ) {
         $this->baseUrl = rtrim($baseUrl, '/');
     }
 
     /** Build with PSR-18/17 discovery (Guzzle, Symfony HttpClient, ...). */
-    public static function create(string $baseUrl, ?Credentials $credentials = null, ?ClientInterface $http = null, string $userAgent = 'suncharts-sdk-php/0.1'): self
+    public static function create(string $baseUrl, ?Credentials $credentials = null, ?ClientInterface $http = null, string $userAgent = 'suncharts-sdk-php/0.2'): self
     {
         return new self(
             $baseUrl,
@@ -194,6 +198,65 @@ final class Client
     public function health(): array
     {
         return $this->json('GET', '/health');
+    }
+
+    // ---- generated operations ------------------------------------------------------------------------------------
+
+    /**
+     * A generated API class (`PIndustries\SunCharts\Generated\Api\*Api`) wired to this client's base URL, partner
+     * credentials and user token, with a fresh OAuth token after a partner 401 and retries on 429 (honouring
+     * `Retry-After`) and on 502/503/504 for idempotent requests.
+     *
+     * @template T of object
+     * @param class-string<T> $class
+     * @param (callable(\Psr\Http\Message\RequestInterface, array<string, mixed>): \GuzzleHttp\Promise\PromiseInterface)|null $handler Guzzle handler (tests: `MockHandler`)
+     * @return T
+     */
+    public function api(string $class, int $maxRetries = 3, ?callable $handler = null): object
+    {
+        $stack = \GuzzleHttp\HandlerStack::create($handler);
+        $stack->push(\GuzzleHttp\Middleware::mapRequest(fn (\Psr\Http\Message\RequestInterface $r) => $this->prepare($r)));
+        $stack->push(\GuzzleHttp\Middleware::retry(
+            function (int $n, \Psr\Http\Message\RequestInterface $req, ?\Psr\Http\Message\ResponseInterface $resp, mixed $e = null) use ($maxRetries): bool {
+                if ($resp === null && $e instanceof \GuzzleHttp\Exception\RequestException) {
+                    $resp = $e->getResponse();
+                }
+                if ($resp === null || $n >= $maxRetries) {
+                    return false;
+                }
+                $s = $resp->getStatusCode();
+                if ($s === 401 && $n === 0 && $this->credentials instanceof ClientCredentials
+                    && str_contains(strtolower($resp->getHeaderLine('www-authenticate')), 'partner')) {
+                    $this->credentials->forget();
+
+                    return true;
+                }
+
+                return $s === 429 || (in_array($s, [502, 503, 504], true) && in_array($req->getMethod(), ['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS'], true));
+            },
+            function (int $n, ?\Psr\Http\Message\ResponseInterface $resp): int {
+                $ra = $resp?->getHeaderLine('retry-after') ?? '';
+                if ($resp?->getStatusCode() === 401) {
+                    return 0;
+                }
+
+                return is_numeric($ra) ? (int) min(60000, (float) $ra * 1000) : (int) (500 * 2 ** ($n - 1) * (0.5 + mt_rand() / mt_getrandmax() / 2));
+            },
+        ));
+        $config = (new \PIndustries\SunCharts\Generated\Configuration())->setHost($this->baseUrl)->setUserAgent($this->userAgent);
+
+        /** @var T */
+        return new $class(new \GuzzleHttp\Client(['handler' => $stack, 'http_errors' => true]), $config);
+    }
+
+    /** Partner credentials (re-evaluated on every attempt, so a refreshed token is picked up) + user token. */
+    private function prepare(\Psr\Http\Message\RequestInterface $req): \Psr\Http\Message\RequestInterface
+    {
+        if ($this->userToken !== null) {
+            $req = $req->withHeader('Authorization', 'Bearer '.$this->userToken);
+        }
+
+        return $this->credentials->authenticate($req);
     }
 
     // ---- low level --------------------------------------------------------------------------------------------

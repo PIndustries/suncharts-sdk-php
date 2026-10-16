@@ -2,10 +2,13 @@
 
 PHP SDK for the [SunCharts](https://suncharts.app) public API: OpenEMR scheduling, charts and FHIR behind one
 partner-friendly HTTP API. PSR-18 HTTP (bring Guzzle, Symfony HttpClient, ...), partner API keys or OAuth2 client
-credentials, MIT licensed.
+credentials, MIT licensed. Every operation and model is **generated from the public OpenAPI spec**
+(`openapi.json`), so the SDK never drifts from the API.
 
 ```bash
-composer require pindustries/suncharts-sdk-php guzzlehttp/guzzle
+composer require pindustries/suncharts-sdk-php:^0.2
+# until it is on Packagist, add the VCS repository first:
+# composer config repositories.suncharts vcs https://github.com/PIndustries/suncharts-sdk-php
 ```
 
 ```php
@@ -29,6 +32,27 @@ $api->inviteUser($tenantId, 'new@clinic.example');
 $resp = $api->forward('GET', '/api/v1/inbox?limit=20', $incomingHeaders, $body);
 ```
 
+## Generated operations
+
+`PIndustries\SunCharts\Generated\Api\*Api` covers every operation in the spec with typed models
+(`PIndustries\SunCharts\Generated\Model\*`). `Client::api()` returns one wired to the client's base URL,
+credentials and user token, with OAuth refresh on a partner 401 and retries on 429/502/503/504:
+
+```php
+use PIndustries\SunCharts\Generated\Api\PartnerApi;
+use PIndustries\SunCharts\Generated\Api\AppointmentsApi;
+
+$me = $api->api(PartnerApi::class)->partnerMe();
+echo $me->getPartner()->getName();
+$today = $api->withUserToken($accessToken)->api(AppointmentsApi::class)->today(null, '2026-10-16');
+```
+
+Generated calls throw `PIndustries\SunCharts\Generated\ApiException` (`getCode()` = HTTP status,
+`getResponseBody()`). The generated layer uses Guzzle (now a dependency); the hand-written methods keep using
+any PSR-18 client.
+
+`examples/sandbox_smoke.php` runs a token + read calls against the sandbox.
+
 Errors throw `PIndustries\SunCharts\Exception\ApiException` with `status()`, `errorCode()` (the API's `error`
 field) and `body()`. Secrets are marked `#[\SensitiveParameter]` and hidden from `var_dump`.
 
@@ -38,6 +62,10 @@ Hosts: production `https://api.suncharts.app`, sandbox `https://sandbox-api.sunc
 
 ```bash
 composer install && composer test && composer stan
+scripts/generate.sh      # regenerate src/Generated from openapi.json (Java 11+); never edit it by hand
 ```
+
+`openapi.json` is synced from the API automatically (a pull request is opened when the spec changes); CI fails
+if `src/Generated` is not exactly what the generator produces.
 
 MIT © P.Industries
