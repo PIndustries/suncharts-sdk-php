@@ -5,20 +5,27 @@ on:
   workflow_dispatch:
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, phx, fleet, org]
     strategy: { matrix: { php: ["8.2", "8.3", "8.4"] } }
     steps:
       - uses: actions/checkout@v4
-      - uses: shivammathur/setup-php@v2
-        with: { php-version: "${{ matrix.php }}", coverage: none }
-      - run: composer install --no-interaction --no-progress
-      - run: composer test
-      - run: composer stan
+      # PHP runs in the official images (setup-php needs apt/PPA builds that the fleet's Ubuntu 26.04 lacks).
+      # Containers run as the runner user so nothing root-owned is left in the persistent workspace.
+      - name: composer install (deps resolved for PHP ${{ matrix.php }})
+        run: |
+          docker run --rm -u "$(id -u):$(id -g)" -e COMPOSER_HOME=/tmp/composer -v "$PWD:/app" -w /app composer:2 \
+            sh -c 'composer config platform.php "${{ matrix.php }}.99" && composer install --no-interaction --no-progress'
+      - name: phpunit + phpstan on PHP ${{ matrix.php }}
+        run: |
+          docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/app" -w /app "php:${{ matrix.php }}-cli" \
+            sh -c 'vendor/bin/phpunit && vendor/bin/phpstan analyse src --level=8 --memory-limit=1G'
   generated-up-to-date:
     # src/Generated must be exactly what scripts/generate.sh produces from openapi.json.
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, phx, fleet, org]
     steps:
       - uses: actions/checkout@v4
+      - name: per-runner cache dir (runners share one $HOME on the fleet host)
+        run: echo "XDG_CACHE_HOME=$RUNNER_TOOL_CACHE/xdg-cache" >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "21" }
       - run: scripts/generate.sh
